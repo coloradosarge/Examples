@@ -1,0 +1,15 @@
+00DA37F7 > $ E8 7C040000    CALL elfscrow.__security_init_cookie
+00DA2737  |. E8 B4F6FFFF    CALL elfscrow.generate_key               ; \generate_key
+00DA1E17  |. E8 74FFFFFF    CALL elfscrow.super_secure_srand         ; \super_secure_srand
+
+00DA1DC3  |. A1 2C60DA00    MOV EAX,DWORD PTR DS:[state]
+
+Start - 1575658800 * 0x343FD = 132B129B0D070 + 0x269EC3
+End - 1575666000 * 0343FD = 132b18588FC10 + 0x269EC3
+
+Epoch Time * 0x343FD - (0x132B100000000) + 0x269EC3
+
+Epoch Time * 0x343FD & 0xFFFFFFFF + 0x2693C3 = Result -> Save for Next Iteration
+Shift Right by 10 (result) & 0x7FFF & 0xFF
+
+

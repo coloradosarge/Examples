@@ -1,0 +1,33 @@
+input {
+        stdin {}
+}
+
+filter {
+        if [message] =~ "ossec:\s+Alert\s+Level:" {
+        if [message] =~ ".*Rule:\s+18107.*" {
+                grok {
+                        patterns_dir => ["/etc/logstash/patterns"]
+                        match => { "message" => "%{SYSLOGBASE:Syslog} +Alert +Level: +%{POSINT:ossec_alert_level}; +Rule: +%{POSINT:ossec_rule_num} +- +%{DATA:ossec_rule_name}; +Location: +\(%{IPORHOST:ossec_src_host}\) +%{IPORHOST:ossec_from}->%{DATA:ossec_to}; +user: +%{USERNAME}; +%{YEAR:ossec_win_evt_year} +%{MONTH:ossec_win_evt_month} +%{MONTHDAY:ossec_win_evt_monthday} %{TIME:ossec_win_evt_time} +WinEvtLog: +Security: +%{WINEVENTTYPE:ossec_win_evt_type}: Microsoft-Windows-Security-Auditing: SYSTEM: +%{DATA}: %{IPORHOST}: +%{DATA:osec_win_evt_desc}. +Subject: +Security +ID: +%{WINSID:ossec_win_sid} +Account +Name: +%{WINUSERNAME:ossec_win_user_name} +Account +Domain: +%{HOSTNAME:ossec_win_domain} +Logon +ID: +%{DATA} +Logon +Type: +%{DATA}: +%{WINSID} +Account +Name: +%{WORD} +Account +Domain: +%{DATA} +Logon +ID: %{DATA} +Logon +GUID: +%{DATA} +Process +Information: +Process +ID: +%{DATA:ossec_win_process_id} +Process +Name: +%{WINPATH} +Network.*"}
+                }
+        }
+
+        if [message] =~ ".*Rule:\s+5501.*" {
+                grok {
+                        patterns_dir => ["/etc/logstash/patterns"]
+                        match => { "message" => "%{SYSLOGBASE:Syslog} +Alert +Level: +%{POSINT:ossec_alert_level}; +Rule: +%{POSINT:ossec_rule_num} +- +%{DATA:ossec_rule_name}; +Location: +(\(%{IPORHOST:ossec_src_host}\))? *%{IPORHOST:ossec_from}->%{DATA:ossec_to}; +%{SYSLOGBASE} +%{OSSECSYSLOGSRC}: +session +opened +for +user +%{USERNAME:ossec_linux_dest_login_user} +by +%{OSSECLINUXSRCUSER}"}
+                }
+        }
+
+        if [message] =~".*Rule:\s+1002" {
+                grok {
+                        patterns_dir => ["/etc/logstash/patterns"]
+                        match => {"message" => "%{SYSLOGBASE:Syslog} +Alert +Level: +%{POSINT:ossec_alert_level}; +Rule: +%{POSINT:ossec_rule_num} +- +%{DATA:ossec_rule_name}; +Location: +\(%{HOSTNAME:ossec_src_host}\) +%{DATA:ossec_from}->%{DATA:ossec_to}; +%{SYSLOGBASE} +%{GREEDYDATA:ossec_syslog_message}"}
+                }
+        }
+}
+
+output {
+        stdout{
+                codec => json
+        }
+}

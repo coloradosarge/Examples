@@ -1,0 +1,1037 @@
+'*****************************************************************************
+'SelectFile Function: Uses a file chooser dialog to return a file path and name
+'*****************************************************************************
+Function SelectFile(strTitle As String) As String
+On Error GoTo handler
+
+   ' Declare fDialog object for dialog and variant to store file name
+   Dim fDialog As Office.FileDialog
+   Dim varFile As Variant
+   Dim hlk As Hyperlink
+      
+   ' Instantaniate the file dialog object
+   Set fDialog = Application.FileDialog(msoFileDialogFilePicker)
+
+   'Set the namespace as fDialog
+   With fDialog
+
+      ' Allow user to make multiple selections in dialog box
+      .AllowMultiSelect = True
+            
+      ' Set the title of the dialog box.
+      .Title = strTitle
+      
+      ' Set the initial directory
+      .InitialFileName = ActiveWorkbook.Path
+      
+      ' Clear out the current filters, and add our own.
+      .Filters.Clear
+      .Filters.Add "All Files", "*.*"
+
+      ' Show the dialog box. If the .Show method returns True, the
+      ' user picked at least one file. If the .Show method returns
+      ' False, the user clicked Cancel.
+      If .Show = True Then
+
+         'Loop through each file selected and add it to our list box.
+         For Each File In .SelectedItems
+            varFile = File
+         Next
+      End If
+   End With
+   
+   'Return the select file path and name
+   SelectFile = varFile
+   Exit Function
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Function
+
+'*****************************************************************************
+'countItems Sub: This procedure counts the number of items in a certain column
+'and then stores each item in the column into the array strList
+'*****************************************************************************
+Sub countItems(strFile As String, ByRef strList() As String)
+On Error GoTo handler
+   'Dimension variables needed for processing
+   Dim xlBook As Excel.Workbook
+   Dim xlSheet As Excel.Worksheet
+   Dim startCell As Integer
+   Dim cellCount As Integer
+   
+   'Open the current product listing workbook and worksheet
+   Set xlBook = Workbooks.Open(strFile)
+   Set xlSheet = xlBook.Worksheets(1)
+   
+   'Start at row 2 and strList item 0
+   startCell = 2
+   cellCount = 0
+   
+   'Delete any empty columns from the product worksheet
+   DeleteEmptyColumns Range("A1:AF50")
+   
+   'Count the number of current products
+   While Not xlSheet.Cells(startCell, 1).Value = ""
+      cellCount = cellCount + 1
+      startCell = startCell + 1
+   Wend
+   
+   'Set the array to the current
+   ReDim strList(cellCount)
+   
+   strList(0) = ""
+   
+   'Reset the start cell to 2
+   startCell = 2
+   
+   'load all current products into the products array
+   For i = 0 To cellCount
+      strList(i) = xlSheet.Cells(startCell, 1).Value
+      startCell = startCell + 1
+   Next i
+   
+   'Close the products worksheet withough saving
+   xlBook.Close saveChanges = False
+   Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteProducts Sub: This procedure checks to see if the specified item is in
+'the current product listing. If it is not assume it is discontinued and delete
+'it from this worksheet.
+'*****************************************************************************
+Sub deleteProducts(ByRef strList() As String)
+On Error GoTo handler
+   'Dimension the variables needed to delete discontinued products
+   Dim rowCount As Integer
+   Dim delete As Boolean
+   Dim intLastColumn As Integer
+   
+   'Find the first column that has ToP in it
+   intLastColumn = FindTopColumn
+   
+   'Get the number of items in the current worksheet
+   rowCount = (Range("A65536").End(xlUp).Row) - 5
+   
+   'Loop through all of the items and check to see if they are in the current products
+   For i = 0 To rowCount
+      'Assume all products are discontinued by default
+      delete = True
+      
+      'Loop through the current product list
+      For j = 0 To UBound(strList)
+         'If a product is current mark it for no deletion
+         If Cells(i + 6, 1).Value = strList(j) Then
+            delete = False
+            Exit For
+          End If
+       Next j
+       'If the product is not current then delete it
+       If delete = True Then
+          Range(Cells(i + 6, 1), Cells(i + 6, intLastColumn)).Interior.ColorIndex = 3
+       End If
+    Next i
+    Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'MarkDiscontinuedItems Sub: If values between Item Listing and Yearly Listing
+'don 't match them mark that item number with red
+'*****************************************************************************
+Sub MarkDiscontinuedItems()
+On Error GoTo handler
+   'Dimension the needed variables for macro processing
+   Dim strFile As String
+   Dim strList() As String
+   Dim finalRows As Integer
+   
+   'Allow the user to select a product file to open for comparison
+   strFile = SelectFile("Product Listing")
+   If strFile = "" Then
+      Exit Sub
+   End If
+   
+   'Count the product listing and store it into the strList Array
+   Call countItems(strFile, strList)
+   
+   'Delete all products not in the current product listing
+   Call deleteProducts(strList)
+   
+   'Count the remaining products in this worksheet
+   finalRows = (Range("A65536").End(xlUp).Row) - 5
+    Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'MarkDelete Sub: If values between Item Listing and Yearly Listing don't match
+'*****************************************************************************
+Sub HideProducts(intMasterCount As Integer)
+On Error GoTo handler
+    'For all the filled rows
+    For i = 5 To intMasterCount
+       'If the item numbers don't match then mark the row for possible deletion
+       If Not Cells(i, 2).Interior.ColorIndex = 3 Then
+          Rows(i).EntireRow.Hidden = True
+       End If
+    Next i
+    Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'ShowDicontinuedItems Macro: Calls two other macro to hide all other rows
+'besides those that are marked for deletion
+'*****************************************************************************
+Sub ShowMarkedItems()
+On Error GoTo handler
+   'Dimension the needed variables for processing
+   Dim intLastRow As Integer
+   
+   'Mark the discontinued items in the first column with the color red
+   Call MarkDiscontinuedItems
+   
+   'Find the last row with data in it
+   intLastRow = (Range("A65536").End(xlUp).Row)
+   
+   'Hide all those rows that have existing products
+   Call HideProducts(intLastRow)
+   
+   Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'Macro Delete Marked Rows: Delete rows with item marked red
+'*****************************************************************************
+Sub DeleteMarkedItems()
+On Error GoTo handler
+    'Dimension variable for row count
+    Dim intRowCount As Integer
+   
+    'Count the number of Rows
+    intRowCount = (Range("A65536").End(xlUp).Row)
+   
+    'Delete columns marked as red
+    For i = 6 To intRowCount
+       If Cells(i, 1).Interior.ColorIndex = 3 Then
+          Application.Rows(i).EntireRow.delete
+          'If we delete a column move a row back
+          i = i - 1
+       End If
+    Next i
+    
+    'Unhide the rows
+    Range("A1:A4000").Rows.EntireRow.Hidden = False
+    Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'AddNewItems Sub: This Sub is the main sub of the whole macro, it calls all
+'of the other Subs and passes all of the initial values
+'*****************************************************************************
+Sub AddNewItems()
+On Error GoTo handler
+
+   'Dimension all of the variables needed for processing
+   Dim intLastRow As Integer
+   Dim strItemFile As String
+   Dim strList() As String
+   Dim intVendorColumn As Integer
+   
+   'Find the Vendor column
+   intVendorColumn = FindVendorColumn
+   
+   'Find out how many rows of data we have
+   intLastRow = (Range("A65536").End(xlUp).Row)
+   
+   'Get the item file that we want to add items from
+   strItemFile = SelectFile("Item Listing")
+   
+   'If no file is selected exit the proceedure
+   If strItemFile = "" Then
+      Exit Sub
+   End If
+   
+   'Sort the list by items
+   Call SortByItem
+   
+   'Build the array of items from the item file
+   Call BuildItemArray(strItemFile, strList)
+   
+   'Delete all of the vendor header rows
+   Call DeleteVendorRows(intLastRow)
+   
+   'Add Items to this worksheet that haven't been added yet
+   Call addItems(strList)
+   
+   'Find out how many rows of data we have
+   intLastRow = (Range("A65536").End(xlUp).Row)
+    
+   'Sort all of the items by the vendor
+   Range(Cells(6, 1), Cells(intLastRow, 208)).Select
+   'Range("A6:HA4000").Select
+   Selection.Sort Key1:=Range(Cells(6, intVendorColumn), Cells(intLastRow, intVendorColumn)), Order1:=xlAscending, Key2:=Range("A6:A4000"), Order2:=xlAscending
+   
+   'Delete empty rows
+   'Call DeleteEmptyRows
+   
+   'Find out how many rows we have now that items have been added
+   intLastRow = (Range("A65536").End(xlUp).Row)
+   
+   'Add the header rows for each vendor
+   Call SortByVendors(intLastRow)
+    
+    Exit Sub
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteVendorRows Sub: This sub delete all of the vendor header rows for
+'later processing
+'*****************************************************************************
+Sub DeleteVendorRows(intLastRow As Integer)
+On Error GoTo handler
+
+    'For each row, if the cell in the first column is empty delete the row
+    For i = 6 To intLastRow
+      If Cells(i, 1).Value = "" Then
+         Application.Rows(i).EntireRow.delete
+      End If
+   Next i
+   
+  Exit Sub
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'SortByVendors Sub: This sub adds a header row to each set of individual
+'Vendors
+'*****************************************************************************
+Sub SortByVendors(intLastRow As Integer)
+On Error GoTo handler
+   
+   'Add initial variables for loop testing
+   Dim strTest As String
+   Dim intVendorColumn As Integer
+   
+   'Set the initial variable to random data to add the first row
+   strTest = ""
+   
+   'Find the Vendor column
+   intVendorColumn = FindVendorColumn()
+   
+   'Loop through each row in the vendor column, if the row doesn't match the previous row
+   'then add a new header row
+   For i = 5 To intLastRow
+      If Not strTest = Cells(i, intVendorColumn).Value Then
+         strTest = Cells(i, intVendorColumn).Value
+         If Not Cells(i, intVendorColumn).Value = "" Or Cells(i, intVendorColumn).Value = Null Then
+            Cells(i, intVendorColumn).EntireRow.Insert
+            Rows(i).Interior.ColorIndex = 2
+            Cells(i, 2).Value = strTest
+            Cells(i, 2).Font.Bold = True
+            i = i + 1
+            intLastRow = intLastRow + 1
+         End If
+       End If
+   Next i
+   Exit Sub
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+
+'*****************************************************************************
+'countItems Sub: This procedure counts the number of items in a certain column
+'and then stores each item in the column into the array strList
+'*****************************************************************************
+Sub BuildItemArray(strFile As String, ByRef strList() As String)
+On Error GoTo handler
+   'Dimension variables needed for processing
+   Dim xlBook As Excel.Workbook
+   Dim xlSheet As Excel.Worksheet
+   Dim startCell As Integer
+   Dim cellCount As Integer
+   
+   'Open the current product listing workbook and worksheet
+   Set xlBook = Workbooks.Open(strFile)
+   Set xlSheet = xlBook.Worksheets(1)
+   
+   'Start at row 2 and strList item 0
+   startCell = 2
+   cellCount = 0
+   
+   'Delete any empty columns from the product worksheet
+   DeleteEmptyColumns Range("A1:AF50")
+   
+   'The cell count equals the last row with data in it
+   cellCount = xlSheet.Range("A65536").End(xlUp).Row
+   
+   'Set the array to the current
+   ReDim strList(cellCount, 3)
+   
+   'Reset the start cell to 2
+   startCell = 2
+   
+   'load all current products into the products array
+   For i = 0 To cellCount
+      strList(i, 0) = xlSheet.Cells(startCell, 1).Value
+      strList(i, 1) = xlSheet.Cells(startCell, 2).Value
+      strList(i, 2) = xlSheet.Cells(startCell, 8).Value
+
+      startCell = startCell + 1
+   Next i
+   
+   'Close the products worksheet withough saving
+   xlBook.Close saveChanges = False
+   Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteProducts Sub: This procedure checks to see if the specified item is in
+'the current product listing. If it is not assume it is discontinued and delete
+'it from this worksheet.
+'*****************************************************************************
+Sub addItems(ByRef strList() As String)
+On Error GoTo handler
+   'Dimension the variables needed to delete discontinued products
+   Dim intRowCount As Integer
+   Dim Add As Boolean
+   Dim intLastRow As Integer
+   Dim intItem As Integer
+   Dim intLastColumn As Integer
+   Dim intVendorColumn As Integer
+   
+   'Get the number of items in the current worksheet
+   intLastRow = (Range("A65536").End(xlUp).Row)
+   intRowCount = (Range("A65536").End(xlUp).Row)
+   
+   'Get the Last column
+   intLastColumn = FindTopColumn
+   
+   'Set the variable to the column number with row that has vendor information
+   intVendorColumn = FindVendorColumn
+   
+   'Loop through all of the items and check to see if they are in the current products
+   For i = 0 To UBound(strList)
+      'Assume all products are discontinued by default
+      Add = True
+      
+      'Loop through the current product list
+      For j = 1 To intRowCount
+         'If a product is current mark it for no deletion
+         If Cells(j, 1).Value = strList(i, 0) Then
+            Add = False
+            Exit For
+          End If
+       Next j
+       
+      'Add the appropriate value from the item list to the appropriate column
+       If Add = True Then
+             Cells(intLastRow + 1, 1).Value = strList(i, 0)
+             Cells(intLastRow + 1, 1).Font.Name = "Arial"
+             Cells(intLastRow + 1, 1).Font.Size = 9
+             Cells(intLastRow + 1, 1).Font.Bold = "True"
+             Cells(intLastRow + 1, 1).HorizontalAlignment = xlCenter
+             Cells(intLastRow + 1, 1).NumberFormat = "@"
+             Cells(intLastRow + 1, 1).Value = Cells(intLastRow + 1, 1).Value
+                      
+             Cells(intLastRow + 1, 2).Value = strList(i, 1)
+             Cells(intLastRow + 1, 2).Font.Name = "Arial"
+             Cells(intLastRow + 1, 2).Font.Size = 9
+             Cells(intLastRow + 1, 2).Font.Bold = "False"
+             Cells(intLastRow + 1, 2).HorizontalAlignment = xlCenter
+             Cells(intLastRow + 1, 2).NumberFormat = "@"
+             
+             Cells(intLastRow + 1, intVendorColumn).Value = strList(i, 2)
+             Cells(intLastRow + 1, intVendorColumn).Font.Name = "Arial"
+             Cells(intLastRow + 1, intVendorColumn).Font.Size = 9
+             Cells(intLastRow + 1, intVendorColumn).Font.Bold = "False"
+             Cells(intLastRow + 1, intVendorColumn).HorizontalAlignment = xlCenter
+             Cells(intLastRow + 1, intVendorColumn).NumberFormat = "@"
+             
+             If Not Cells(intLastRow + 1, 1).Value = "" Or Cells(intLastRow + 1, 1).Value = Null Then
+                Range(Cells(intLastRow + 1, 1), Cells(intLastRow + 1, intLastColumn)).Interior.ColorIndex = 23
+             End If
+             
+             intLastRow = intLastRow + 1
+             
+        End If
+    Next i
+    Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteRowHeader Sub: This procedure delete each row that serves as a header
+'for vendor info
+'*****************************************************************************
+Sub DeleteRowHeaders(intDummy As Integer)
+On Error GoTo handler
+   'Dimension variable needed for row processing
+   Dim intLastRow As Integer
+   
+   'Find out how many rows of data we have
+   intLastRow = (Range("A65536").End(xlUp).Row)
+   
+   'If that item column for that row is empty assume it's a row header
+   'and delete it
+   For i = 6 To intLastRow
+      If Cells(i, 1) = "" Then
+         Application.Rows(i).EntireRow.delete
+      End If
+   Next i
+      
+    Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'SortByVendor Sub: This procedure sorts each row by vendor and adds the
+'row headers
+'*****************************************************************************
+Sub SortByVendor()
+On Error GoTo handler
+   'Dimension variables needed for processing
+   Dim intLastRow As Integer
+   Dim intVendorColumn As Integer
+    
+   'Find the vendor column
+   intVendorColumn = FindVendorColumn
+   
+   'Find out how many rows of data we have
+   intLastRow = (Range("A65536").End(xlUp).Row)
+    
+   'Sort all of the items by the vendor
+   Range(Cells(6, 1), Cells(intLastRow, 208)).Select
+   'Range("A6:HA4000").Select
+   Selection.Sort Key1:=Range(Cells(6, intVendorColumn), Cells(intLastRow, intVendorColumn)), Order1:=xlAscending, Key2:=Range("A6:A4000"), Order2:=xlAscending
+   
+   'Delete empty rows
+   'Call DeleteEmptyRows
+   
+   'Find out how many rows we have now that items have been added
+   intLastRow = (Range("A65536").End(xlUp).Row)
+   
+   'Add the header rows for each vendor
+   Call SortByVendors(intLastRow)
+   
+   Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'SortByItem Sub: This sub deletes all the row headers and then sorts the
+'spreadsheet by item
+'*****************************************************************************
+Sub SortByItem()
+On Error GoTo handler
+   'Delete all of the row headers to make sorting easier
+   Call DeleteRowHeaders(1)
+   
+   'Sort all of the items by the item
+   Range("A6:HA4000").Select
+   Selection.Sort Key1:=Range("A6:A4000"), Order1:=xlAscending
+   Exit Sub
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'FindVendorColumn Sub: This sub find the first cell in that row that
+'has vendor in it
+'*****************************************************************************
+Function FindVendorColumn() As Integer
+On Error GoTo handler
+    
+   'Find the first cell that has vendor in it
+   For i = 1 To 100
+      If Trim(Cells(1, i).Value) = "Preferred Vendor" Then
+         FindVendorColumn = i
+         Exit Function
+      End If
+   Next i
+   Exit Function
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Function
+
+'*****************************************************************************
+'FindTopColumn Sub: This sub find the first cell in that row that
+'has ToP
+'*****************************************************************************
+Function FindTopColumn() As Integer
+On Error GoTo handler
+    
+   'Find the first cell that has ToP in it
+   For i = 2 To 200
+      If Trim(Cells(1, i).Value) = "ToP" Then
+         FindTopColumn = i
+         Exit Function
+      End If
+   Next i
+   Exit Function
+    
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Function
+
+'*****************************************************************************
+'PasteFile Sub: Pastes data copied from a previous remote workbook
+'*****************************************************************************
+Sub PasteFile(strFile As String, strCopyRange As String, rngPasteRange As Range)
+On Error GoTo handler
+    'Dimension the variables needed to process copy
+    Dim xlBook As Excel.Workbook
+    Dim xlSheet As Excel.Worksheet
+    
+    'Set the variables to the remote workbook and worksheet
+    Set xlBook = Workbooks.Open(strFile)
+    Set xlSheet = xlBook.Worksheets(1)
+    
+    'Copy from the remote file the specified range
+    ActiveSheet.Range(strCopyRange).Copy
+    
+    'Set set the main workbook as active
+    Workbooks(1).Activate
+    
+    'select the range in the current workbook
+    rngPasteRange.Select
+    
+    'Do the current paste operation
+    Selection.PasteSpecial Paste:=xlAll, Operation:=xlNone, SkipBlanks:=False, Transpose:=False
+    
+    'Close the file and don't save, don't prompt
+    Application.CutCopyMode = False
+    xlBook.Close saveChanges = False
+    Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+
+'*****************************************************************************
+'BuildArray Sub: Builds the array with the data in the current year range
+'*****************************************************************************
+Sub BuildArray(ByRef strSortArray() As String, intLength As Integer, intColumn As Integer, intFirstRow As Integer)
+On Error GoTo handler
+   'Loop through the 1st and Second dimension to fill up array with data from current year sales cells
+   For i = 0 To intLength
+     For j = 0 To 25
+        If IsError(Cells(i + intFirstRow, intColumn + j)) Then
+            strSortArray(i, j) = ""
+        ElseIf IsEmpty(Cells(i + intFirstRow, intColumn + j)) Then
+            strSortArray(i, j) = ""
+        Else
+           strSortArray(i, j) = Cells(i + intFirstRow, intColumn + j).Value
+        End If
+     Next j
+   Next i
+   
+   Range(Cells(intFirstRow, intColumn), Cells(4000, intColumn + 52)).Value = ""
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+   MsgBox "Error Roger"
+End Sub
+
+'*****************************************************************************
+'SortAndMatch Sub: Matches the current years items with those items for the paste
+'                  year. Leaves row empty if there is no match
+'*****************************************************************************
+Sub SortAndMatch(strList() As String, intMasterLength As Integer, intCompositeLength As Integer, intLastColumn As Integer)
+On Error GoTo handler
+   'Dimension the needed variables for looping
+   Dim Row As Integer
+   Dim intMasterCount As Integer
+   Dim intCompositeCount As Integer
+   Dim intColumn As Integer
+   
+   'Set the begining row number and initialize variables for looping
+   Row = 4
+   intCompositeCount = intCompositeLength
+   intMasterCount = intMasterLength
+   intColumn = intLastColumn
+
+   'Loop and copy array data to the row if it matches
+   Do
+      Row = Row + 1
+      For i = 0 To intCompositeCount
+         If strList(i, 0) = Cells(Row, 1).Value Then
+            For j = 0 To 25
+               Cells(Row, intColumn + j).Value = strList(i, j)
+            Next j
+            Exit For
+         End If
+      Next i
+   Loop While Row <= intMasterCount + 6
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+   MsgBox "Error in sort and match"
+End Sub
+
+'*****************************************************************************
+'ItemFormat Sub: Formats the ItemNumber in pasted in data
+'*****************************************************************************
+Sub ItemNumberFormat(intLength As Integer, intColumn As Integer, intFirstRow As Integer)
+On Error GoTo handler
+   Dim spacePosition As Integer
+   Dim tempString As String
+   Dim tempArray() As String
+   
+   'Loop through the 1st and Second dimension to fill up array with data from current year sales cells
+   For i = 0 To intLength
+      tempString = Cells(intFirstRow + i, intColumn).Value
+      
+      spacePosition = InStr(tempString, " ")
+      If spacePosition > 0 Then
+        Cells(intFirstRow + i, intColumn).Value = Trim(Mid(tempString, 1, spacePosition))
+      End If
+   Next i
+
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+   MsgBox "Error Roger"
+End Sub
+
+'*****************************************************************************
+'FormatAndDeleteColumns: Deletes % of Sales Column and Format Qty and
+'Currency columns to reflect the correct currencies
+'*****************************************************************************
+Sub FormatAndDeleteColumns(intLastColumn As Integer, intRow As Integer)
+On Error GoTo handler
+   'Dimension string for testing cases
+   Dim strTest As String
+   
+   'We are going to check columns 1 through 60 for values
+   For i = intLastColumn To 60 + intLastColumn
+   
+      'Initialize strTest for second Row
+      strTest = Cells(intRow, i).Value
+      
+      'Format or Delete column according to header value
+      Select Case strTest
+         Case "Qty"
+            Application.Columns(i).EntireColumn.NumberFormat = "#,###,###"
+         Case "Avg Price"
+            Application.Columns(i).EntireColumn.NumberFormat = "$#,###,##0.00"
+         Case "%"
+            Cells(2, i).Value = ""
+      End Select
+      
+      'Initialize strTest for first row
+      strTest = Cells(intRow, i).Value
+      
+      'Format column according to header value, autofit
+      Select Case strTest
+         Case "Quantity On Hand", "Quantity On Purchase Order", "Quantity On Sales Order", "Carton Qty"
+            Application.Columns(i).EntireColumn.NumberFormat = "#,###,###"
+         Case "Price", "Cost", "S/R Price", "Inner Pack Price", "Midwest Web Spec Price", "Midwest Web Spec Exp Date Price"
+            Application.Columns(i).EntireColumn.NumberFormat = "$#,###,##0.00"
+         Case "Item"
+            Application.Columns(i).EntireColumn.Font.Bold = True
+            Application.Columns(i).EntireColumn.AutoFit
+         Case "Description", "Preferred Vendor", "Stk Date"
+      End Select
+   Next i
+   
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteEmptyColumns Sub: Delete all columns in a range if that column is empty
+'*****************************************************************************
+Sub DeleteEmptyColumns(DeleteRange As Range)
+On Error GoTo handler
+   'Dim count variables for deletion
+   Dim cCount As Integer, c As Integer
+   
+   'If there is not a range then exit
+   If DeleteRange Is Nothing Then Exit Sub
+   
+   'If there are more then one area then exit
+   If DeleteRange.Areas.Count > 1 Then Exit Sub
+   
+   'Using delete range loop through all of the rows and delete any empty ones
+   With DeleteRange
+      cCount = .Columns.Count
+      For c = cCount To 1 Step -1
+         If IsError(.Columns(c)) Then
+         ElseIf Application.WorksheetFunction.CountA(.Columns(c)) = 0 Then
+            .Columns(c).EntireColumn.delete
+         End If
+      Next c
+   End With
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteEmptyColumns Sub: Delete all columns in a range if that column is empty
+'*****************************************************************************
+Sub DeleteEmptyRows()
+On Error GoTo handler
+   'For each row, if the cell in the first column is empty delete the row
+    For i = 6 To 4000
+      If Cells(i, 1).Value = "" Then
+         Application.Rows(i).EntireRow.delete
+      End If
+   Next i
+   
+  Exit Sub
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'Merge Macro: Merges master spreadsheet and composite data spreadsheet
+'*****************************************************************************
+Sub MergeMaster()
+On Error GoTo handler
+   'Dimension variables needed for macro operations
+   Dim intLastColumn As Integer
+   Dim strFile As String
+   Dim strCopyRange As String
+   Dim rngPasteRange As Range
+   Dim intCompositeRows As Integer
+   Dim strList() As String
+   Dim intMasterCount As Integer
+   Dim intPasteColumn As Integer
+   Dim strYearlyFile As String
+   Dim strCurrentFile As String
+   Dim rngDelRange As Range
+   
+   'Find the last column with data and last row with data in the master list
+   intLastColumn = (Range("HA2").End(xlToLeft).Column) + 1
+   intMasterCount = (Range("A65536").End(xlUp).Row) - 5
+   intPasteColumn = intLastColumn
+   
+   'Select the composite sales file and exit if no file is chosen
+   strFile = SelectFile("Item Listing")
+   If strFile = "" Or strFile = Null Then
+      Exit Sub
+   End If
+   strCurrentFile = SelectFile("Current Sales")
+   If strCurrentFile = "" Or strYearlyFile = Null Then
+      Exit Sub
+   End If
+   strYearlyFile = SelectFile("Yearly Sales")
+   If strYearlyFile = "" Or strCurrentFile = Null Then
+      Exit Sub
+   End If
+   
+   'Set the range to copy and paste from
+   strCopyRange = "A1:Z4000"
+   Set rngPasteRange = Range(Cells(1, intLastColumn), Cells(4000, intLastColumn + 25))
+   
+   'Do the paste operation
+   Call PasteFile(strFile, strCopyRange, rngPasteRange)
+   Set rngPasteRange = Range(Cells(1, intLastColumn), Cells(50, intLastColumn + 25))
+   Call DeleteEmptyColumns(rngPasteRange)
+   
+   'Set the backgroud color to white and the font size to 14 for the pasted range
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.Interior.ColorIndex = 2
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.Font.Size = 9
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.ColumnWidth = 15
+   
+   
+   'Count the number of rows pasted in
+   intCompositeRows = Range(Cells(65536, intPasteColumn), Cells(65536, intPasteColumn)).End(xlUp).Row - 1
+   
+   'Set the array size for the sorting operations
+   ReDim strList(intCompositeRows, 25)
+   
+   'Build the array using the pasted range
+   Call BuildArray(strList, intCompositeRows, intLastColumn, 2)
+   
+   'Sort the pasted in data and match it with the existing data in the worksheet
+   Call SortAndMatch(strList, intMasterCount, intCompositeRows, intLastColumn)
+   
+   'Format the rows after pasting them
+   Call FormatAndDeleteColumns(intLastColumn, 1)
+   
+   'Find the last column with data and last row with data in the master list
+   intLastColumn = (Range("HA1").End(xlToLeft).Column) + 1
+   intMasterCount = (Range("A65536").End(xlUp).Row) - 5
+   intPasteColumn = intLastColumn
+   Set rngPasteRange = Range(Cells(1, intLastColumn), Cells(4000, intLastColumn + 52))
+   Set rngDelRange = Range(Cells(6, intLastColumn - 3), Cells(40, intLastColumn + 25))
+   
+   'Do the paste operation
+   Call PasteFile(strCurrentFile, strCopyRange, rngPasteRange)
+   Call DeleteEmptyColumns(rngDelRange)
+   
+   'Set the backgroud color to white and the font size to 14 for the pasted range
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.Interior.ColorIndex = 2
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.Font.Size = 9
+   
+   'Count the number of rows pasted in
+   intCompositeRows = Range(Cells(65536, intPasteColumn), Cells(65536, intPasteColumn)).End(xlUp).Row - 1
+   
+   'Set the array size for the sorting operations
+   ReDim strList(intCompositeRows, 25)
+   
+   'Format the Item number in pasted data to correct format
+   Call ItemNumberFormat(intCompositeRows, intLastColumn, 3)
+   
+   'Build the array using the pasted range
+   Call BuildArray(strList, intCompositeRows, intLastColumn, 3)
+   
+   'Sort the pasted in data and match it with the existing data in the worksheet
+   Call SortAndMatch(strList, intMasterCount, intCompositeRows, intLastColumn)
+   
+   'Format the rows after pasting them
+   Call FormatAndDeleteColumns(intLastColumn, 2)
+   
+   'Find the last column with data and last row with data in the master list
+   intLastColumn = (Range("HA2").End(xlToLeft).Column) + 1
+   intMasterCount = (Range("A65536").End(xlUp).Row) - 5
+   intPasteColumn = intLastColumn
+   Set rngPasteRange = Range(Cells(1, intLastColumn), Cells(4000, intLastColumn + 52))
+   Set rngDelRange = Range(Cells(6, intLastColumn - 3), Cells(40, intLastColumn + 25))
+   
+   'Do the paste operation
+   Call PasteFile(strYearlyFile, strCopyRange, rngPasteRange)
+   Call DeleteEmptyColumns(rngDelRange)
+   
+   'Set the backgroud color to white and the font size to 14 for the pasted range
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.Interior.ColorIndex = 2
+   Range(Cells(1, intLastColumn), Cells(1, intLastColumn + 60)).EntireColumn.Font.Size = 9
+   
+   'Count the number of rows pasted in
+   intCompositeRows = Range(Cells(65536, intPasteColumn), Cells(65536, intPasteColumn)).End(xlUp).Row - 1
+   
+   'Set the array size for the sorting operations
+   ReDim strList(intCompositeRows, 25)
+   
+   'Format the Item number in pasted data to correct format
+   Call ItemNumberFormat(intCompositeRows, intLastColumn, 3)
+   
+   'Build the array using the pasted range
+   Call BuildArray(strList, intCompositeRows, intLastColumn, 3)
+   
+   'Sort the pasted in data and match it with the existing data in the worksheet
+   Call SortAndMatch(strList, intMasterCount, intCompositeRows, intLastColumn)
+   
+   'Format the rows after pasting them
+   Call FormatAndDeleteColumns(intLastColumn, 2)
+   
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+'*****************************************************************************
+'DeleteExtraInfo Sub: Delete all data in current or yearly columns after Catalog
+' if the value Catalog is found in a string
+'*****************************************************************************
+Sub DeleteExtraInfo(intColumn As Integer)
+On Error GoTo handler
+   'Dimension new variables for deleting uneeded data at end of the lsit
+   Dim objRegEx As New RegExp
+   Dim strPattern As String
+   Dim endOfList As Boolean
+   Dim lastCell As Integer
+   
+   'Initialize the catalog
+   strPattern = "^Catalog"
+   
+   'Set the pattern to match Catalog anchored to the begining of the string
+   objRegEx.Pattern = strPattern
+   
+   'Do a global match
+   objRegEx.Global = True
+   
+   'Loop through all cells until we find the value of catalog
+   For i = 4 To 4000
+     If (objRegEx.test(Cells(i, intColumn).Value) = True) Then
+         endOfList = True
+         lastCell = i
+         Exit For
+     End If
+   Next i
+   
+   'delete a specified range after we find catalog
+   Range(Cells(i, intColumn), Cells(i + 100, intColumn + 8)).Clear
+   Exit Sub
+   
+'print out error details if there is an error
+handler:
+   MsgBox "Error Number: " & Err.Number & vbCrLf & Err.Description
+End Sub
+
+
+
+
+
+
+
